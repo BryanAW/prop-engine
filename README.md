@@ -50,6 +50,28 @@ No machine learning. Pure statistical features:
 
 These combine into a **Normal distribution projection**, giving us P(over line) and EV.
 
+#### v1: NoStake PRA Model (Python)
+
+A foundational **Points + Rebounds + Assists (PRA) projection model** implemented in pure Python (no external ML libraries). Core formula:
+
+```
+μ = B × F_match × F_min × F_usage
+```
+
+Where:
+- **B** = Blended baseline PRA (60% season avg + 40% last-5 avg)
+- **F_match** = Matchup factor (defense tier ± pace tier)
+- **F_min** = Minutes factor (projected minutes vs season avg)
+- **F_usage** = Usage factor (adjusted for key injuries)
+
+Assumes PRA ~ Normal(μ, σ²) to convert a line into P(over) and P(under).
+
+**Testing & Usage:**
+- 44 unit tests covering all components (baseline, matchup, minutes, usage, full pipeline, probabilities)
+- Interactive CLI (`python3 cli.py`) for quick evaluations
+- Command-line mode for batch processing
+- All math preserved; weights tunable in `NoStakePRAConfig`
+
 ### Future Phases
 
 - **Phase 1:** Add lightweight supervised ML (Logistic Regression / XGBoost) while keeping explanations
@@ -179,19 +201,46 @@ console.log(`Hit probability: ${data.suggestions[0].probabilityOver}`);
 console.log(`EV: ${data.suggestions[0].evPerUnit}`);
 ```
 
-### Python
+### Python (PRA Model)
+
+**Interactive CLI:**
+
+```bash
+cd python
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run interactive mode
+python3 cli.py
+
+# Or use command-line arguments for batch processing
+python3 cli.py --spa 35.0 --rpa5 36.0 --min-season 35.0 --min-recent5 35.5 \
+                --sigma 6.5 --line 35.5 --t-def 0 --t-pace 0
+```
+
+**Direct import:**
 
 ```python
-import requests
+from nostake_pra_model import evaluate_pra_prop, NoStakePRAConfig
 
-response = requests.get(
-    "http://localhost:3000/v1/suggest/props",
-    params={"gameId": "12345", "playerId": "237", "markets": "pts"}
+result = evaluate_pra_prop(
+    line=35.5,
+    spa=39.7,
+    rpa5=37.5,
+    min_season=35.5,
+    min_recent5=36.2,
+    sigma=6.5,
+    t_def=-1,  # elite defense
+    t_pace=1,  # fast pace
+    key_scorer_out=False,
+    opp_key_defender_out=False,
 )
-data = response.json()
 
-for suggestion in data["suggestions"]:
-    print(f"{suggestion['market']}: {suggestion['projection']} (p={suggestion['probabilityOver']:.2f})")
+print(f"Projected PRA: {result['mu']:.2f}")
+print(f"P(OVER {35.5}): {result['p_over']:.1%}")
+print(f"P(UNDER {35.5}): {result['p_under']:.1%}")
+print(f"Z-score: {result['z']:.3f}")
 ```
 
 ---
@@ -200,22 +249,30 @@ for suggestion in data["suggestions"]:
 
 ```
 prop-engine/
-├── src/
-│   ├── api/v1/          # REST endpoints
-│   ├── features/        # Rolling stats, opponent, context, injuries, H2H
-│   ├── models/          # Probability, EV, and ML modules
-│   ├── pipeline/        # Feature assembly and scoring
-│   ├── providers/       # External data sources
-│   ├── types/           # TypeScript interfaces
-│   └── utils/           # Math, time, logging helpers
-├── tests/               # Unit and integration tests
-├── scripts/             # Data seeding and utilities
-└── PROJECT_CONTEXT.md   # Detailed technical specs
+├── src/                         # TypeScript server (Phase 1+)
+│   ├── api/v1/                  # REST endpoints
+│   ├── features/                # Rolling stats, opponent, context, injuries, H2H
+│   ├── models/                  # Probability, EV, and ML modules
+│   ├── pipeline/                # Feature assembly and scoring
+│   ├── providers/               # External data sources
+│   ├── types/                   # TypeScript interfaces
+│   └── utils/                   # Math, time, logging helpers
+├── python/                      # Python statistical models (v1+)
+│   ├── nostake_pra_model.py     # Core PRA projection + probability module
+│   ├── cli.py                   # Interactive & CLI entry point
+│   ├── test_nostake_pra_model.py # 44 comprehensive unit tests
+│   ├── requirements.txt          # Python dependencies
+│   └── venv/                    # Virtual environment (ignored)
+├── tests/                       # TypeScript unit and integration tests
+├── scripts/                     # Data seeding and utilities
+└── PROJECT_CONTEXT.md           # Detailed technical specs
 ```
 
 ---
 
 ## Development
+
+### TypeScript (Server)
 
 ```bash
 # Run tests
@@ -234,28 +291,51 @@ npm run format
 npm run type-check
 ```
 
-### Adding a New Feature
+### Python (Statistical Models)
 
-1. Create feature calculator in `src/features/`
-2. Add types to `src/types/index.ts`
-3. Wire into `assembleFeatures.ts`
-4. Update `scoreProp.ts` to use the feature
-5. Write unit tests
-6. Update this README if user-facing
+```bash
+cd python
+
+# Create & activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # macOS/Linux
+# or: venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run all tests
+python3 -m pytest test_nostake_pra_model.py -v
+
+# Run specific test class
+python3 -m pytest test_nostake_pra_model.py::TestFullProjection -v
+
+# Interactive CLI
+python3 cli.py
+```
 
 ---
 
 ## Roadmap
 
 ### Phase 0 (Current) — Transparent Baseline
+
+#### v0.1.0 (In Progress)
 - [x] Project setup
+- [x] **v1: NoStake PRA Model** (Python)
+  - [x] Core projection formula (baseline × matchup × minutes × usage)
+  - [x] Probability conversion (Normal CDF)
+  - [x] 44 comprehensive unit tests
+  - [x] Interactive CLI + command-line interface
+  - [x] Configurable weights
 - [ ] Core feature calculators (rolling, opponent, context, injuries, H2H)
-- [ ] Probability & EV models
 - [ ] REST API with fixtures
-- [ ] Unit tests + documentation
+- [ ] Full TypeScript implementation
+- [ ] Documentation & examples
 
 ### Phase 1 — Lightweight ML
-- [ ] Logistic Regression per market
+- [ ] Integrate PRA model into REST API
+- [ ] Logistic Regression per market (wrapping statistical models)
 - [ ] Time-series validation
 - [ ] Calibration (Platt/Isotonic)
 - [ ] Model inference wrapper
@@ -263,10 +343,12 @@ npm run type-check
 ### Phase 2 — Risk Modules
 - [ ] Blowout probability model
 - [ ] Minutes volatility adjustments
+- [ ] Extended models (Rebounds, Assists, 3-Pointers)
 
 ### Phase 3 — Ensemble + Explainability
 - [ ] Weighted ensemble (statistical + ML)
 - [ ] Natural language explanations
+- [ ] Real-time prop odds integration
 
 ---
 
@@ -380,6 +462,6 @@ Questions? Open an issue or reach out.
 
 ---
 
-**Status:** 🚧 Phase 0 in progress  
-**Version:** 0.1.0  
+**Status:** 🚧 Phase 0.1.0 — v1 PRA Model (Testing)  
+**Version:** 0.1.0-alpha  
 **Last updated:** November 2025
