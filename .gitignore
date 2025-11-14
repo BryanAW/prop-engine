@@ -55,3 +55,6 @@ pids/
 # Temp files
 tmp/
 temp/
+
+# Python virtual environments
+python/venv/
